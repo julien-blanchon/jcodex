@@ -27,7 +27,9 @@ pub(crate) enum AppCommand {
     Interrupt,
     CleanBackgroundTerminals,
     ListMonitors,
-    StopMonitor { process_id: String },
+    StopMonitor {
+        process_id: String,
+    },
     RunUserShellCommand {
         command: String,
     },

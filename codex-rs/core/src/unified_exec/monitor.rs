@@ -80,7 +80,11 @@ impl UnifiedExecProcessManager {
     }
 
     pub(crate) async fn terminate_background_process(&self, process_id: i32) -> bool {
-        let id = self.monitors.lock().await.iter()
+        let id = self
+            .monitors
+            .lock()
+            .await
+            .iter()
             .find(|(_, entry)| entry.process_id == Some(process_id))
             .map(|(id, _)| id.clone());
         match id {

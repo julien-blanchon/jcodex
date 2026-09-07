@@ -862,11 +862,13 @@ impl App {
                 Ok(true)
             }
             AppCommand::ListMonitors => {
-                self.manage_monitors(app_server, thread_id, None).await?;
+                self.manage_monitors(app_server, thread_id, /*stop_process_id*/ None)
+                    .await?;
                 Ok(true)
             }
             AppCommand::StopMonitor { process_id } => {
-                self.manage_monitors(app_server, thread_id, Some(process_id)).await?;
+                self.manage_monitors(app_server, thread_id, Some(process_id))
+                    .await?;
                 Ok(true)
             }
             AppCommand::CleanBackgroundTerminals => {

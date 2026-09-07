@@ -126,7 +126,7 @@ fn thread_background_terminals_list_response_round_trips_foreign_paths() {
     ] {
         let response = ThreadBackgroundTerminalsListResponse {
             data: vec![ThreadBackgroundTerminal {
-            monitor_description: None,
+                monitor_description: None,
                 item_id: "item_123".to_string(),
                 process_id: "42".to_string(),
                 command: "run server".to_string(),
@@ -142,6 +142,7 @@ fn thread_background_terminals_list_response_round_trips_foreign_paths() {
         let expected = json!({
             "data": [{
                 "itemId": "item_123",
+                "monitorDescription": null,
                 "processId": "42",
                 "command": "run server",
                 "cwd": expected_cwd,

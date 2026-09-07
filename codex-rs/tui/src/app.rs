@@ -228,6 +228,7 @@ mod loaded_threads;
 mod managed_worktree_creation;
 mod misalignment_policy;
 mod model_defaults;
+mod monitors;
 mod new_session;
 mod pending_interactive_replay;
 mod permission_shortcuts;
@@ -256,7 +257,6 @@ mod thread_settings;
 mod thread_title;
 mod transcript_export;
 mod working_directory;
-mod monitors;
 
 use self::agent_navigation::AgentNavigationDirection;
 use self::agent_navigation::AgentNavigationState;

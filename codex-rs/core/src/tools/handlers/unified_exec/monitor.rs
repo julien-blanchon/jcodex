@@ -119,7 +119,8 @@ impl ToolExecutor<ToolInvocation> for MonitorHandler {
             };
             if invocation.turn.session_source.is_non_root_agent() {
                 return Err(FunctionCallError::RespondToModel(
-                    "Monitors belong to the main agent. Ask the parent agent to create this watch.".into(),
+                    "Monitors belong to the main agent. Ask the parent agent to create this watch."
+                        .into(),
                 ));
             }
             let args: Args = parse_arguments(arguments)?;
