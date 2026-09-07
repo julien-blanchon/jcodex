@@ -97,6 +97,20 @@ jobs:
           cache-on-failure: "true"
           cache-workspace-crates: "true"
           cache-bin: "false"
+      # rust-cache keeps Cargo build-script outputs but removes V8's gn_out directory.
+      - name: Restore verified V8 native library after cache cleanup
+        run: |
+          python3 - <<'PYTHON'
+          import gzip, os, shutil
+          from pathlib import Path
+          target = os.environ["TARGET"]
+          name = "rusty_v8.lib" if "windows" in target else "librusty_v8.a"
+          destination = Path("codex-rs/target") / target / "release/gn_out/obj" / name
+          destination.parent.mkdir(parents=True, exist_ok=True)
+          with gzip.open(os.environ["RUSTY_V8_ARCHIVE"], "rb") as source, destination.open("wb") as output:
+              shutil.copyfileobj(source, output)
+          assert destination.stat().st_size > 0
+          PYTHON
       - name: Build sandbox resource
         if: runner.os == 'Linux'
         working-directory: codex-rs
