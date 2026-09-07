@@ -50,6 +50,7 @@ use codex_core_plugins::PluginMetricsSidecar;
 mod async_watcher;
 mod errors;
 mod head_tail_buffer;
+mod monitor;
 mod oneshot;
 mod process;
 mod process_manager;
@@ -69,6 +70,11 @@ pub(crate) use process::SpawnLifecycleHandle;
 pub(crate) use process::UnifiedExecProcess;
 pub(crate) use stdin_approval::TerminalPermissions;
 pub(crate) use stdin_approval::TerminalSandboxSource;
+
+pub(super) enum InitialYield {
+    Interactive,
+    Monitor,
+}
 
 pub(crate) const MIN_YIELD_TIME_MS: u64 = 250;
 pub(crate) const WINDOWS_INITIAL_EXEC_YIELD_TIME_FLOOR_MS: u64 = 10_000;
@@ -161,6 +167,9 @@ impl ProcessStore {
 
 pub(crate) struct UnifiedExecProcessManager {
     process_store: Mutex<ProcessStore>,
+    monitor_delivery: Mutex<()>,
+    monitor_slots: Arc<tokio::sync::Semaphore>,
+    monitors: Mutex<std::collections::BTreeMap<String, monitor::MonitorEntry>>,
     max_write_stdin_yield_time_ms: u64,
 }
 
@@ -168,6 +177,9 @@ impl UnifiedExecProcessManager {
     pub(crate) fn new(max_write_stdin_yield_time_ms: u64) -> Self {
         Self {
             process_store: Mutex::new(ProcessStore::default()),
+            monitors: Mutex::default(),
+            monitor_delivery: Mutex::new(()),
+            monitor_slots: Arc::new(tokio::sync::Semaphore::new(/*permits*/ 4)),
             max_write_stdin_yield_time_ms: max_write_stdin_yield_time_ms
                 .max(MIN_EMPTY_YIELD_TIME_MS),
         }

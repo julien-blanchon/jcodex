@@ -1,0 +1,6 @@
+---
+source: core/tests/suite/monitor.rs
+assertion_line: 27
+expression: "start_output.replace(id, \"MONITOR_ID\")"
+---
+Monitor started (id MONITOR_ID). Events wake this session automatically. Continue working or finish your turn; do not poll or sleep. An event is not a user reply or approval.

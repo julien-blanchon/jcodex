@@ -515,8 +515,8 @@ impl UnifiedExecProcess {
                         let bytes = chunk.chunk.into_inner();
                         let mut guard = output_buffer.lock().await;
                         guard.push_chunk(&bytes);
-                        drop(guard);
                         let _ = output_tx.send(bytes);
+                        drop(guard);
                         output_notify.notify_waiters();
                     }
                     last_seq = last_seq.max(next_seq.saturating_sub(1));
@@ -558,8 +558,8 @@ impl UnifiedExecProcess {
                         let bytes = chunk.chunk.into_inner();
                         let mut guard = output_buffer.lock().await;
                         guard.push_chunk(&bytes);
-                        drop(guard);
                         let _ = output_tx.send(bytes);
+                        drop(guard);
                         output_notify.notify_waiters();
                     }
                     ExecProcessEvent::Exited {
@@ -619,8 +619,8 @@ impl UnifiedExecProcess {
                     Ok(chunk) => {
                         let mut guard = output_buffer.lock().await;
                         guard.push_chunk(&chunk);
-                        drop(guard);
                         let _ = output_tx.send(chunk);
+                        drop(guard);
                         output_notify.notify_waiters();
                     }
                     Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,

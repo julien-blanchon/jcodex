@@ -66,10 +66,10 @@ pub(crate) struct ExecCommandHandlerOptions {
     pub(crate) include_windows_shell_guidance: bool,
 }
 
-#[derive(Clone, Copy)]
 enum ExecCommandLifetime {
     Interactive,
     OneShot,
+    Monitor(super::monitor::MonitorConfig),
 }
 
 pub struct ExecCommandHandler {
@@ -107,6 +107,16 @@ impl ExecCommandHandler {
             lifetime: ExecCommandLifetime::OneShot,
         }
     }
+
+    pub(super) fn monitor(
+        options: ExecCommandHandlerOptions,
+        config: super::monitor::MonitorConfig,
+    ) -> Self {
+        Self {
+            options,
+            lifetime: ExecCommandLifetime::Monitor(config),
+        }
+    }
 }
 
 impl ToolExecutor<ToolInvocation> for ExecCommandHandler {
@@ -124,8 +134,8 @@ impl ToolExecutor<ToolInvocation> for ExecCommandHandler {
             self.options.include_shell_parameter,
             self.options.include_windows_shell_guidance,
         );
-        let mut spec = match self.lifetime {
-            ExecCommandLifetime::Interactive => spec,
+        let mut spec = match &self.lifetime {
+            ExecCommandLifetime::Interactive | ExecCommandLifetime::Monitor(_) => spec,
             ExecCommandLifetime::OneShot => one_shot_exec_command_spec(spec),
         };
         if !self.options.allow_tty
@@ -307,8 +317,8 @@ impl ExecCommandHandler {
             prefix_rule,
             ..
         } = args;
-        let completion_timeout = match self.lifetime {
-            ExecCommandLifetime::Interactive => None,
+        let completion_timeout = match &self.lifetime {
+            ExecCommandLifetime::Interactive | ExecCommandLifetime::Monitor(_) => None,
             ExecCommandLifetime::OneShot => {
                 tty = false;
                 Some(Duration::from_millis(
@@ -443,10 +453,22 @@ impl ExecCommandHandler {
                 UnifiedExecProcessManager::exec_command_to_completion(request, &context, timeout)
                     .await
             }
-            None => manager.exec_command(request, &context).await,
+            None => match &self.lifetime {
+                ExecCommandLifetime::Monitor(_) => {
+                    manager.exec_monitor_command(request, &context).await
+                }
+                ExecCommandLifetime::Interactive | ExecCommandLifetime::OneShot => {
+                    manager.exec_command(request, &context).await
+                }
+            },
         };
         match result {
-            Ok(response) => Ok(boxed_tool_output(response)),
+            Ok(response) => {
+                if let ExecCommandLifetime::Monitor(config) = &self.lifetime {
+                    return manager.start_monitor(&context, config, response).await;
+                }
+                Ok(boxed_tool_output(response))
+            }
             Err(UnifiedExecError::SandboxDenied {
                 output,
                 original_token_count,

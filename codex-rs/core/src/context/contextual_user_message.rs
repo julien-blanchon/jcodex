@@ -24,6 +24,7 @@ const CONTEXTUAL_USER_FRAGMENT_MATCHERS: &[fn(&str) -> bool] = &[
     UserShellCommand::matches_text,
     TurnAborted::matches_text,
     SubagentNotification::matches_text,
+    super::MonitorNotification::matches_text,
     InternalModelContextFragment::matches_text,
     RecommendedPluginsInstructions::matches_text,
     LegacyUnifiedExecProcessLimitWarning::matches_text,

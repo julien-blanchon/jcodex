@@ -81,6 +81,7 @@ pub(crate) struct TurnInputQueue {
 pub(crate) struct InputQueue {
     activity_tx: watch::Sender<InputQueueActivity>,
     mailbox_pending_mails: Mutex<VecDeque<PendingMailboxCommunication>>,
+    monitor_notifications: Mutex<VecDeque<ResponseItem>>,
 }
 
 struct PendingMailboxCommunication {
@@ -95,6 +96,7 @@ impl InputQueue {
         Self {
             activity_tx,
             mailbox_pending_mails: Mutex::new(VecDeque::new()),
+            monitor_notifications: Mutex::default(),
         }
     }
 
@@ -137,16 +139,40 @@ impl InputQueue {
         self.activity_tx.send_replace(InputQueueActivity::Mailbox);
     }
 
+    pub(crate) async fn clear_monitor_notifications(&self) {
+        self.monitor_notifications.lock().await.clear();
+    }
+
+    pub(crate) async fn enqueue_monitor_notification(
+        &self,
+        mut notification: crate::context::MonitorNotification,
+    ) {
+        use crate::context::ContextualUserFragment;
+        let mut pending = self.monitor_notifications.lock().await;
+        if pending.len() == 16 {
+            pending.pop_front();
+            notification
+                .output
+                .insert_str(0, "[older queued monitor event omitted]\n");
+        }
+        pending.push_back(ContextualUserFragment::into(notification));
+        drop(pending);
+        self.activity_tx.send_replace(InputQueueActivity::Mailbox);
+    }
+
     pub(crate) async fn has_pending_mailbox_items(&self) -> bool {
-        !self.mailbox_pending_mails.lock().await.is_empty()
+        !self.monitor_notifications.lock().await.is_empty()
+            || !self.mailbox_pending_mails.lock().await.is_empty()
     }
 
     pub(crate) async fn has_trigger_turn_mailbox_items(&self) -> bool {
-        self.mailbox_pending_mails
-            .lock()
-            .await
-            .iter()
-            .any(|mail| mail.communication.trigger_turn)
+        !self.monitor_notifications.lock().await.is_empty()
+            || self
+                .mailbox_pending_mails
+                .lock()
+                .await
+                .iter()
+                .any(|mail| mail.communication.trigger_turn)
     }
 
     pub(crate) async fn drain_mailbox_input_items(&self) -> (Vec<TurnInput>, TurnStartOptions) {
@@ -181,10 +207,18 @@ impl InputQueue {
                     .filter(|id| !id.trim().is_empty())
             })
             .map(str::to_string);
-        let items = pending_mails
+        let mut items: Vec<TurnInput> = pending_mails
             .into_iter()
             .map(|mail| TurnInput::InterAgentCommunication(mail.communication))
             .collect();
+        items.extend(
+            self.monitor_notifications
+                .lock()
+                .await
+                .drain(..)
+                .map(ResponseItemEnvelope::new)
+                .map(TurnInput::ResponseItem),
+        );
         (items, start_options)
     }
 
@@ -657,3 +691,7 @@ mod tests {
         assert!(input_queue.has_trigger_turn_mailbox_items().await);
     }
 }
+
+#[cfg(test)]
+#[path = "input_queue_monitor_tests.rs"]
+mod monitor_tests;

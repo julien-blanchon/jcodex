@@ -52,8 +52,12 @@ impl UnifiedExecProcessManager {
                 process: &process,
             };
             let result = {
-                let mut execution =
-                    Box::pin(manager.exec_command_inner(request, &context, Some(&mut completion)));
+                let mut execution = Box::pin(manager.exec_command_inner(
+                    request,
+                    &context,
+                    Some(&mut completion),
+                    super::InitialYield::Interactive,
+                ));
                 tokio::select! {
                     biased;
                     _ = context.cancellation_token.cancelled() => {

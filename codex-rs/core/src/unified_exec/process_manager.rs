@@ -488,8 +488,13 @@ impl UnifiedExecProcessManager {
         request: ExecCommandRequest,
         context: &UnifiedExecContext,
     ) -> Result<ExecCommandToolOutput, UnifiedExecError> {
-        self.exec_command_inner(request, context, /*completion*/ None)
-            .await
+        self.exec_command_inner(
+            request,
+            context,
+            /*completion*/ None,
+            super::InitialYield::Interactive,
+        )
+        .await
     }
 
     pub(super) async fn exec_command_inner(
@@ -497,6 +502,7 @@ impl UnifiedExecProcessManager {
         request: ExecCommandRequest,
         context: &UnifiedExecContext,
         mut completion: Option<&mut Completion<'_>>,
+        initial_yield: super::InitialYield,
     ) -> Result<ExecCommandToolOutput, UnifiedExecError> {
         let cwd = request.cwd.clone();
         let process = self
@@ -599,7 +605,10 @@ impl UnifiedExecProcessManager {
             }
         };
 
-        let yield_time_ms = clamp_yield_time(request.yield_time_ms);
+        let yield_time_ms = match initial_yield {
+            super::InitialYield::Interactive => clamp_yield_time(request.yield_time_ms),
+            super::InitialYield::Monitor => 0,
+        };
         // For the initial exec_command call, we both stream output to events
         // (via start_streaming_output above) and collect a snapshot here for
         // the tool response body.
@@ -1678,6 +1687,7 @@ impl UnifiedExecProcessManager {
     }
 
     pub(crate) async fn terminate_all_processes(&self) {
+        self.monitors.lock().await.clear();
         let entries: Vec<ProcessEntry> = {
             let mut processes = self.process_store.lock().await;
             let entries: Vec<ProcessEntry> = processes
