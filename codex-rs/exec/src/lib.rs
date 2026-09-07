@@ -3,6 +3,8 @@
 // - In --json mode, stdout must be valid JSONL, one event per line.
 // For both modes, any other output must be written to stderr.
 #![deny(clippy::print_stdout)]
+// Match the embedded app-server's recursion budget when compiling release futures.
+#![recursion_limit = "256"]
 
 mod cli;
 mod event_processor;
