@@ -1,0 +1,9 @@
+---
+source: tui/src/app/monitors_tests.rs
+expression: rendered
+---
+
+  Monitors (1)
+  Select a monitor to stop it. Esc closes this menu.
+
+› 1. Server errors  tail -F server.log

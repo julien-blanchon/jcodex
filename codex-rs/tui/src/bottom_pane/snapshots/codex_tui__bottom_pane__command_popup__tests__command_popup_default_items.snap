@@ -43,6 +43,7 @@ expression: commands
 /exit - exit Codex
 /feedback - send logs to maintainers
 /rollout - print the rollout file path
+/monitor - list command monitors and select one to stop
 /ps - list background terminals
 /stop - stop all background terminals
 /clear - clear the terminal and start a new chat

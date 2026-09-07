@@ -1706,7 +1706,17 @@ impl UnifiedExecProcessManager {
     }
 
     pub(crate) async fn list_processes(&self) -> Vec<BackgroundTerminalInfo> {
-        let monitors = self.monitors.lock().await;
+        let monitors = self
+            .monitors
+            .lock()
+            .await
+            .values()
+            .filter_map(|monitor| {
+                monitor
+                    .process_id
+                    .map(|id| (id, monitor.description.clone()))
+            })
+            .collect::<HashMap<_, _>>();
         let store = self.process_store.lock().await;
         let mut entries = store
             .processes
@@ -1717,9 +1727,7 @@ impl UnifiedExecProcessManager {
         entries
             .into_iter()
             .map(|entry| BackgroundTerminalInfo {
-                monitor_description: monitors.values()
-                    .find(|monitor| monitor.process_id == Some(entry.process_id))
-                    .map(|monitor| monitor.description.clone()),
+                monitor_description: monitors.get(&entry.process_id).cloned(),
                 item_id: entry.call_id.clone(),
                 process_id: entry.process_id.to_string(),
                 command: entry.hook_command.clone(),
