@@ -1105,7 +1105,9 @@ fn add_shell_tools(context: &CoreToolPlanContext<'_>, registry: &mut ToolRegistr
     if features.enabled(Feature::UnifiedExec) {
         registry.add(ExecCommandHandler::new(options));
         registry.add(WriteStdinHandler);
-        if features.enabled(Feature::Monitor) {
+        if features.enabled(Feature::Monitor)
+            && !context.turn_context.session_source.is_non_root_agent()
+        {
             registry.add(MonitorHandler::new(options));
         }
     } else {

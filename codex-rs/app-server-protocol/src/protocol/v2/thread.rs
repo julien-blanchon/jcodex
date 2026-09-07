@@ -1191,6 +1191,9 @@ pub struct ThreadBackgroundTerminalsListParams {
 #[serde(rename_all = "camelCase")]
 #[ts(export_to = "v2/")]
 pub struct ThreadBackgroundTerminal {
+    /// Label for a command monitor; absent for ordinary background commands.
+    #[serde(default)]
+    pub monitor_description: Option<String>,
     pub item_id: String,
     pub process_id: String,
     pub command: String,

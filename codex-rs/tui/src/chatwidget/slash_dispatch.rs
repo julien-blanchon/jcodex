@@ -524,6 +524,9 @@ impl ChatWidget {
             SlashCommand::Pets => {
                 self.open_pets_picker();
             }
+            SlashCommand::Monitor => {
+                self.submit_op(AppCommand::ListMonitors);
+            }
             SlashCommand::Ps => {
                 self.add_ps_output();
             }
@@ -1169,6 +1172,7 @@ impl ChatWidget {
             | SlashCommand::Pwd
             | SlashCommand::Usage
             | SlashCommand::DebugConfig
+            | SlashCommand::Monitor
             | SlashCommand::Ps
             | SlashCommand::Stop
             | SlashCommand::MemoryDrop

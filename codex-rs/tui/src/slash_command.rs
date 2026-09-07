@@ -69,6 +69,7 @@ pub enum SlashCommand {
     Exit,
     Feedback,
     Rollout,
+    Monitor,
     Ps,
     #[strum(to_string = "stop", serialize = "clean")]
     Stop,
@@ -120,6 +121,7 @@ impl SlashCommand {
             SlashCommand::Statusline => "configure which items appear in the status line",
             SlashCommand::Theme => "choose a syntax highlighting theme",
             SlashCommand::Pets => "choose or hide the terminal pet",
+            SlashCommand::Monitor => "list command monitors and select one to stop",
             SlashCommand::Ps => "list background terminals",
             SlashCommand::Stop => "stop all background terminals",
             SlashCommand::MemoryDrop => "DO NOT USE",
@@ -246,6 +248,7 @@ impl SlashCommand {
             | SlashCommand::Pwd
             | SlashCommand::Usage
             | SlashCommand::DebugConfig
+            | SlashCommand::Monitor
             | SlashCommand::Ps
             | SlashCommand::Stop
             | SlashCommand::App

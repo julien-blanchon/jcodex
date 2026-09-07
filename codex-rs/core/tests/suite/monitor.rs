@@ -246,3 +246,74 @@ async fn monitor_limit_rejects_before_execution_and_shutdown_reaps_watches() -> 
     );
     Ok(())
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn monitor_user_cancellation_does_not_wake_agent() -> anyhow::Result<()> {
+    let harness = harness().await?;
+    let mock = mount_sse_sequence(harness.server(), vec![
+        call("start", json!({"command": watcher(), "description": "cancel me"})),
+        done("idle"),
+    ]).await;
+    harness.submit("watch").await?;
+    let terminals = harness.test().codex.list_background_terminals().await;
+    assert_eq!(terminals.len(), 1);
+    assert_eq!(terminals[0].monitor_description.as_deref(), Some("cancel me"));
+    assert!(harness.test().codex.terminate_background_terminal(terminals[0].process_id.parse()?).await);
+    harness.write_file("signal", "ready").await?;
+    tokio::time::sleep(std::time::Duration::from_millis(/*millis*/ 500)).await;
+    assert_eq!(mock.requests().len(), 2);
+    assert!(harness.test().codex.list_background_terminals().await.is_empty());
+    harness.test().codex.submit(Op::Shutdown).await?;
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn monitor_flood_stops_and_releases_capacity() -> anyhow::Result<()> {
+    let harness = harness().await?;
+    let flood = match test_target_os() {
+        TestTargetOs::Linux | TestTargetOs::MacOs => "while ! test -f signal; do sleep 0.05; done; yes EVENT",
+        TestTargetOs::Windows => "while (!(Test-Path signal)) { Start-Sleep -Milliseconds 50 }; while ($true) { Write-Output ('EVENT' * 1000) }",
+    };
+    let started = mount_sse_sequence(harness.server(), vec![
+        call("start", json!({"command": flood, "description": "flood"})),
+        done("idle"),
+    ]).await;
+    harness.submit("watch").await?;
+    assert_eq!(started.requests().len(), 2);
+    let event = mount_sse_once(harness.server(), done("bounded")).await;
+    harness.write_file("signal", "go").await?;
+    wait_for_event(&harness.test().codex, |ev| matches!(ev, EventMsg::TurnComplete(_))).await;
+    let request = event.single_request();
+    assert!(request.message_input_texts("user").iter().any(|t| t.contains("Stopped:") && t.len() < 900));
+    assert!(harness.test().codex.list_background_terminals().await.is_empty());
+    harness.test().codex.submit(Op::Shutdown).await?;
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn subagent_cannot_create_monitor() -> anyhow::Result<()> {
+    use codex_core::StartThreadOptions;
+    use codex_core::TurnInputRequest;
+    use codex_protocol::protocol::SessionSource;
+    use codex_protocol::protocol::SubAgentSource;
+    use codex_protocol::user_input::UserInput;
+    let harness = harness().await?;
+    let spawned = harness.test().thread_manager.start_thread(StartThreadOptions {
+        session_source: Some(SessionSource::SubAgent(SubAgentSource::Other("worker".into()))),
+        ..StartThreadOptions::new(harness.test().config.clone())
+    }).await?;
+    let mock = mount_sse_sequence(harness.server(), vec![
+        call("start", json!({"command": watcher(), "description": "forbidden"})),
+        done("done"),
+    ]).await;
+    spawned.thread.start_or_steer_turn(TurnInputRequest::user_input(vec![UserInput::Text {
+        text: "watch".into(), text_elements: vec![],
+    }])).await?;
+    wait_for_event(&spawned.thread, |ev| matches!(ev, EventMsg::TurnComplete(_))).await;
+    let requests = mock.requests();
+    assert!(!requests[0].body_json()["tools"].as_array().unwrap().iter().any(|tool| tool["name"] == "monitor"));
+    assert!(spawned.thread.list_background_terminals().await.is_empty());
+    spawned.thread.shutdown_and_wait().await?;
+    harness.test().codex.submit(Op::Shutdown).await?;
+    Ok(())
+}

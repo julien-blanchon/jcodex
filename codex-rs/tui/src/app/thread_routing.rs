@@ -861,6 +861,14 @@ impl App {
                 store.set_active_turn_id(response.turn.id);
                 Ok(true)
             }
+            AppCommand::ListMonitors => {
+                self.manage_monitors(app_server, thread_id, None).await?;
+                Ok(true)
+            }
+            AppCommand::StopMonitor { process_id } => {
+                self.manage_monitors(app_server, thread_id, Some(process_id)).await?;
+                Ok(true)
+            }
             AppCommand::CleanBackgroundTerminals => {
                 app_server
                     .thread_background_terminals_clean(thread_id)

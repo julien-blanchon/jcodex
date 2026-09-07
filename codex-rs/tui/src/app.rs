@@ -256,6 +256,7 @@ mod thread_settings;
 mod thread_title;
 mod transcript_export;
 mod working_directory;
+mod monitors;
 
 use self::agent_navigation::AgentNavigationDirection;
 use self::agent_navigation::AgentNavigationState;

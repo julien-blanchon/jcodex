@@ -42,6 +42,8 @@ impl ChatWidget {
                 op,
                 AppCommand::Interrupt
                     | AppCommand::CleanBackgroundTerminals
+                    | AppCommand::ListMonitors
+                    | AppCommand::StopMonitor { .. }
                     | AppCommand::OverrideTurnContext { .. }
                     | AppCommand::ReloadUserConfig
                     | AppCommand::ListSkills { .. }

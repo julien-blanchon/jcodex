@@ -19,8 +19,8 @@ use tokio_util::sync::CancellationToken;
 use tokio_util::sync::DropGuard;
 
 pub(super) struct MonitorEntry {
-    description: String,
-    process_id: Option<i32>,
+    pub(super) description: String,
+    pub(super) process_id: Option<i32>,
     _cancel: DropGuard,
     _permit: Arc<tokio::sync::OwnedSemaphorePermit>,
 }
@@ -77,6 +77,16 @@ impl UnifiedExecProcessManager {
                 .collect::<Vec<_>>()
         )
         .to_string()
+    }
+
+    pub(crate) async fn terminate_background_process(&self, process_id: i32) -> bool {
+        let id = self.monitors.lock().await.iter()
+            .find(|(_, entry)| entry.process_id == Some(process_id))
+            .map(|(id, _)| id.clone());
+        match id {
+            Some(id) => self.remove_monitor(&id).await == "Monitor stopped.",
+            None => self.terminate_process(process_id).await,
+        }
     }
 
     pub(crate) async fn remove_monitor(&self, id: &str) -> String {

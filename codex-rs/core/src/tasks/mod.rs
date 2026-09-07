@@ -893,7 +893,7 @@ impl Session {
     pub(crate) async fn terminate_background_terminal(&self, process_id: i32) -> bool {
         self.services
             .unified_exec_manager
-            .terminate_process(process_id)
+            .terminate_background_process(process_id)
             .await
     }
 
