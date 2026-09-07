@@ -17,8 +17,8 @@ async fn update_does_not_start_interactive_prompt() -> Result<()> {
     codex_command(codex_home.path())?
         .arg("update")
         .assert()
-        .failure()
-        .stderr(contains("`codex update` is not available in debug builds"));
+        .success()
+        .stdout(contains("brew upgrade julien-blanchon/tap/jcodex"));
 
     Ok(())
 }

@@ -67,7 +67,9 @@ pub(crate) async fn run(
     root_config_overrides: CliConfigOverrides,
 ) -> anyhow::Result<()> {
     if codex_build_info::IS_JCODEX && command.subcommand.is_some() {
-        anyhow::bail!("jcodex does not manage the shared Codex daemon. Use `jcodex remote-control` for a foreground server.");
+        anyhow::bail!(
+            "jcodex does not manage the shared Codex daemon. Use `jcodex remote-control` for a foreground server."
+        );
     }
     match command.subcommand {
         None => {

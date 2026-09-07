@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Apply the fork's entrypoint rename to a validated upstream runtime package."""
+
 import argparse
 import json
 import shutil

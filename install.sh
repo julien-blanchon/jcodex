@@ -22,6 +22,8 @@ main() {
   base="https://github.com/$repo/releases/download/$tag"
   archive="jcodex-$target.tar.gz"
   tmp=$(mktemp -d)
+  # Capture the function-local temporary path when registering cleanup.
+  # shellcheck disable=SC2064
   trap "rm -rf -- $(printf '%q' "$tmp")" EXIT
   curl -fsSL --proto '=https' "$base/$archive" -o "$tmp/$archive"
   curl -fsSL --proto '=https' "$base/SHA256SUMS" -o "$tmp/SHA256SUMS"
@@ -45,8 +47,9 @@ main() {
   if [[ ! -e "$destination" ]]; then
     mv "$tmp/package" "$destination"
   fi
+  [[ -x "$destination/bin/jcodex" && -f "$destination/codex-package.json" ]] || { echo "Incomplete existing package: $destination" >&2; return 1; }
+  "$destination/bin/jcodex" --version
   ln -sfn "$destination/bin/jcodex" "$link_dir/jcodex"
-  "$link_dir/jcodex" --version
   echo "Installed $link_dir/jcodex. Add $link_dir to PATH if needed."
   rm -rf "$tmp"
   trap - EXIT

@@ -961,7 +961,9 @@ fn resolve_windows_update_command_from_path(
 
 fn run_update_command() -> anyhow::Result<()> {
     if codex_build_info::IS_JCODEX {
-        println!("Update with `brew upgrade julien-blanchon/tap/jcodex` or rerun https://raw.githubusercontent.com/julien-blanchon/jcodex/main/install.sh");
+        println!(
+            "Update with `brew upgrade julien-blanchon/tap/jcodex` or rerun https://raw.githubusercontent.com/julien-blanchon/jcodex/main/install.sh"
+        );
         return Ok(());
     }
     #[cfg(debug_assertions)]
@@ -1145,12 +1147,21 @@ async fn cli_main(
     let toggle_overrides = feature_toggles.to_overrides()?;
     root_config_overrides.raw_overrides.extend(toggle_overrides);
     // Keep the shared Codex config untouched; this executable always offers monitors.
-    root_config_overrides.raw_overrides.extend([
-        "features.monitor=true".into(),
-        "features.unified_exec=true".into(),
-    ]);
-    if matches!(&subcommand, Some(Subcommand::AppServer(AppServerCommand { subcommand: Some(AppServerSubcommand::Daemon(_)), .. }))) {
-        anyhow::bail!("jcodex does not manage the shared Codex daemon. Use `jcodex app-server` for a dedicated server.");
+    if !matches!(&subcommand, Some(Subcommand::Queue(_))) {
+        root_config_overrides
+            .raw_overrides
+            .push("features.monitor=true".into());
+    }
+    if matches!(
+        &subcommand,
+        Some(Subcommand::AppServer(AppServerCommand {
+            subcommand: Some(AppServerSubcommand::Daemon(_)),
+            ..
+        }))
+    ) {
+        anyhow::bail!(
+            "jcodex does not manage the shared Codex daemon. Use `jcodex app-server` for a dedicated server."
+        );
     }
     let agents_options = match &subcommand {
         Some(Subcommand::Agents(options)) => Some(options),
@@ -3696,15 +3707,15 @@ mod tests {
     fn plugin_marketplace_help_uses_plugin_namespace() {
         let help = help_from_args(&["codex", "plugin", "marketplace", "--help"]);
         assert!(
-            help.contains("Usage: codex plugin marketplace [OPTIONS] <COMMAND>"),
+            help.contains("Usage: jcodex plugin marketplace [OPTIONS] <COMMAND>"),
             "{help}"
         );
 
         for (subcommand, usage) in [
-            ("add", "Usage: codex plugin marketplace add"),
-            ("list", "Usage: codex plugin marketplace list"),
-            ("upgrade", "Usage: codex plugin marketplace upgrade"),
-            ("remove", "Usage: codex plugin marketplace remove"),
+            ("add", "Usage: jcodex plugin marketplace add"),
+            ("list", "Usage: jcodex plugin marketplace list"),
+            ("upgrade", "Usage: jcodex plugin marketplace upgrade"),
+            ("remove", "Usage: jcodex plugin marketplace remove"),
         ] {
             let help = help_from_args(&["codex", "plugin", "marketplace", subcommand, "--help"]);
             assert!(help.contains(usage), "{help}");
@@ -4059,7 +4070,7 @@ mod tests {
             vec![
                 "Token usage: total=2 input=0 output=2".to_string(),
                 "To continue this session, run:".to_string(),
-                "  codex resume 123e4567-e89b-12d3-a456-426614174000".to_string(),
+                "  jcodex resume 123e4567-e89b-12d3-a456-426614174000".to_string(),
             ]
         );
     }
@@ -4074,7 +4085,7 @@ mod tests {
                 insta::assert_snapshot!(lines.join("\n"), @"
                 Token usage: total=2 input=0 output=2
                 To continue this session, run:
-                  codex resume 123e4567-e89b-12d3-a456-426614174000
+                  jcodex resume 123e4567-e89b-12d3-a456-426614174000
                 ");
             }
         }
@@ -4092,7 +4103,7 @@ mod tests {
             vec![
                 "Token usage: total=2 input=0 output=2",
                 "To continue this session, run:",
-                "  \u{1b}[36mcodex resume 123e4567-e89b-12d3-a456-426614174000\u{1b}[39m",
+                "  \u{1b}[36mjcodex resume 123e4567-e89b-12d3-a456-426614174000\u{1b}[39m",
             ]
         );
     }
@@ -4107,8 +4118,8 @@ mod tests {
         insta::assert_snapshot!(lines.join("\n"), @"
         Token usage: total=2 input=0 output=2
         To continue this session, run:
-          codex resume 123e4567-e89b-12d3-a456-426614174000
-        Or run codex resume and select my-thread.
+          jcodex resume 123e4567-e89b-12d3-a456-426614174000
+        Or run jcodex resume and select my-thread.
         ");
     }
 
@@ -4124,8 +4135,8 @@ mod tests {
             vec![
                 "Token usage: total=2 input=0 output=2",
                 "To continue this session, run:",
-                "  \u{1b}[36mcodex resume 123e4567-e89b-12d3-a456-426614174000\u{1b}[39m",
-                "Or run \u{1b}[36mcodex resume\u{1b}[39m and select \u{1b}[36mmy-thread\u{1b}[39m.",
+                "  \u{1b}[36mjcodex resume 123e4567-e89b-12d3-a456-426614174000\u{1b}[39m",
+                "Or run \u{1b}[36mjcodex resume\u{1b}[39m and select \u{1b}[36mmy-thread\u{1b}[39m.",
             ]
         );
     }

@@ -1,4 +1,5 @@
 """Exercise the real installer with fake network responses and isolated paths."""
+
 import hashlib
 import io
 import os
@@ -27,10 +28,18 @@ class InstallerTests(unittest.TestCase):
                     info.size = len(content)
                     info.mode = 0o755
                     output.addfile(info, io.BytesIO(content))
-            checksum = "0" * 64 if corrupt else hashlib.sha256(archive.read_bytes()).hexdigest()
-            (root / "SHA256SUMS").write_text(checksum + "  jcodex-aarch64-apple-darwin.tar.gz\n")
-            (fake / "uname").write_text('#!/bin/sh\ncase "$1" in -m) echo arm64;; *) echo Darwin;; esac\n')
-            (fake / "curl").write_text('''#!/usr/bin/env python3
+            checksum = (
+                "0" * 64
+                if corrupt
+                else hashlib.sha256(archive.read_bytes()).hexdigest()
+            )
+            (root / "SHA256SUMS").write_text(
+                checksum + "  jcodex-aarch64-apple-darwin.tar.gz\n"
+            )
+            (fake / "uname").write_text(
+                '#!/bin/sh\ncase "$1" in -m) echo arm64;; *) echo Darwin;; esac\n'
+            )
+            (fake / "curl").write_text("""#!/usr/bin/env python3
 import os, shutil, sys
 from pathlib import Path
 args = sys.argv[1:]
@@ -40,7 +49,7 @@ else:
     url = next(a for a in args if a.startswith('https://'))
     source = 'SHA256SUMS' if url.endswith('SHA256SUMS') else 'archive.tar.gz'
     shutil.copyfile(Path(os.environ['FIXTURE']) / source, args[args.index('-o') + 1])
-''')
+""")
             for path in fake.iterdir():
                 path.chmod(0o755)
             bindir = root / "bin"
@@ -48,11 +57,17 @@ else:
             (bindir / "codex").write_text("upstream")
             if occupied:
                 (bindir / "jcodex").write_text("existing")
-            env = dict(os.environ, PATH=str(fake) + os.pathsep + os.environ["PATH"],
-                       FIXTURE=str(root), JCODEX_INSTALL_ROOT=str(root / "packages"),
-                       JCODEX_BIN_DIR=str(bindir))
+            env = dict(
+                os.environ,
+                PATH=str(fake) + os.pathsep + os.environ["PATH"],
+                FIXTURE=str(root),
+                JCODEX_INSTALL_ROOT=str(root / "packages"),
+                JCODEX_BIN_DIR=str(bindir),
+            )
             env.pop("JCODEX_VERSION", None)
-            result = subprocess.run(["bash", str(INSTALLER)], env=env, text=True, capture_output=True)
+            result = subprocess.run(
+                ["bash", str(INSTALLER)], env=env, text=True, capture_output=True
+            )
             self.assertEqual((bindir / "codex").read_text(), "upstream")
             if corrupt or occupied:
                 self.assertNotEqual(result.returncode, 0)
@@ -60,7 +75,9 @@ else:
             else:
                 self.assertEqual(result.returncode, 0, result.stderr)
                 self.assertTrue((bindir / "jcodex").is_symlink())
-                repeated = subprocess.run(["bash", str(INSTALLER)], env=env, capture_output=True)
+                repeated = subprocess.run(
+                    ["bash", str(INSTALLER)], env=env, capture_output=True
+                )
                 self.assertEqual(repeated.returncode, 0, repeated.stderr)
 
     def test_install_and_repeat_preserve_codex(self):

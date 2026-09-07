@@ -1,0 +1,38 @@
+name: jcodex CI
+on:
+  push:
+    branches: [main, monitor-only]
+  pull_request:
+permissions:
+  contents: read
+concurrency:
+  group: jcodex-ci-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  monitor:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      CARGO_PROFILE_DEV_DEBUG: "0"
+      CARGO_PROFILE_TEST_DEBUG: "0"
+      CARGO_INCREMENTAL: "0"
+      CARGO_BUILD_JOBS: "3"
+      CARGO_NET_GIT_FETCH_WITH_CLI: "true"
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582
+      - uses: taiki-e/install-action@44c6d64aa62cd779e873306675c7a58e86d6d532
+        with:
+          tool: just,cargo-nextest
+      - name: Native build dependencies
+        run: sudo apt-get update && sudo apt-get install -y libcap-dev pkg-config clang cmake
+      - uses: ./.github/actions/setup-rusty-v8
+        with:
+          target: x86_64-unknown-linux-gnu
+      - name: Installer tests
+        run: python3 -m unittest discover -s scripts/jcodex -p 'test_*.py'
+      - name: Monitor integration and UI tests
+        working-directory: codex-rs
+        run: just test -p codex-core -p codex-tui -p codex-app-server-protocol -E 'test(monitor) | test(background_terminal)'
