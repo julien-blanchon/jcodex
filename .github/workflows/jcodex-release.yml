@@ -5,9 +5,13 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: Package version (build only; push a jcodex-v tag to publish)
+        description: Package version
         required: true
-        default: "0.1.0"
+        default: "0.1.1"
+      publish:
+        description: Publish after every platform passes (creates the tag on success)
+        type: boolean
+        default: false
 permissions:
   contents: read
 concurrency:
@@ -77,6 +81,15 @@ jobs:
       - uses: ./.github/actions/setup-rusty-v8
         with:
           target: ${{ matrix.target }}
+      - name: Cache Rust build artifacts, including failed builds
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
+        with:
+          workspaces: codex-rs
+          shared-key: jcodex-release-${{ matrix.target }}
+          env-vars: CARGO CC CFLAGS CXX CMAKE RUSTFLAGS RUSTUP_TOOLCHAIN
+          cache-on-failure: "true"
+          cache-workspace-crates: "true"
+          cache-bin: "false"
       - name: Build sandbox resource
         if: runner.os == 'Linux'
         working-directory: codex-rs
@@ -124,7 +137,7 @@ jobs:
           path: dist/*
           if-no-files-found: error
   publish:
-    if: startsWith(github.ref, 'refs/tags/jcodex-v')
+    if: startsWith(github.ref, 'refs/tags/jcodex-v') || (github.event_name == 'workflow_dispatch' && inputs.publish)
     needs: build
     runs-on: ubuntu-24.04
     permissions:
@@ -141,9 +154,21 @@ jobs:
       - name: Checksums and release
         env:
           GH_TOKEN: ${{ github.token }}
+          INPUT_VERSION: ${{ inputs.version }}
         run: |
           set -euo pipefail
+          version="${INPUT_VERSION:-${GITHUB_REF_NAME#jcodex-v}}"
+          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          tag="jcodex-v$version"
+          if [[ "$GITHUB_EVENT_NAME" == workflow_dispatch ]]; then
+            if existing_sha=$(gh api "repos/$GITHUB_REPOSITORY/commits/$tag" --jq .sha 2>/dev/null); then
+              [[ "$existing_sha" == "$GITHUB_SHA" ]] || { echo "Tag already points to another commit: $tag" >&2; exit 1; }
+            else
+              gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs" \
+                -f ref="refs/tags/$tag" -f sha="$GITHUB_SHA" > /dev/null
+            fi
+          fi
           cp install.sh dist/install.sh
           (cd dist && sha256sum jcodex-* > SHA256SUMS)
-          gh release create "$GITHUB_REF_NAME" dist/* --verify-tag \
-            --title "jcodex ${GITHUB_REF_NAME#jcodex-v}" --notes-file scripts/jcodex/release-notes.md
+          gh release create "$tag" dist/* --verify-tag \
+            --title "jcodex $version" --notes-file scripts/jcodex/release-notes.md
