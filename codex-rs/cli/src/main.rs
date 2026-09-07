@@ -1,3 +1,6 @@
+// Match the embedded TUI and app-server's release-future recursion budget.
+#![recursion_limit = "256"]
+
 use clap::Args;
 use clap::CommandFactory;
 use clap::Parser;
