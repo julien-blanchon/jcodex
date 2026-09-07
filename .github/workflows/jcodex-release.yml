@@ -12,8 +12,15 @@ on:
         description: Publish after every platform passes (creates the tag on success)
         type: boolean
         default: false
+      reuse_run_id:
+        description: Reuse Linux and Windows artifacts from this run; rebuild macOS only
+        type: string
+      source_commit:
+        description: Exact source commit of the reused run (required with reuse_run_id)
+        type: string
 permissions:
   contents: read
+  actions: read
 concurrency:
   group: jcodex-release-${{ github.ref }}
   cancel-in-progress: false
@@ -23,19 +30,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - runner: macos-15
-            target: aarch64-apple-darwin
-          - runner: macos-15-intel
-            target: x86_64-apple-darwin
-          - runner: ubuntu-24.04
-            target: x86_64-unknown-linux-musl
-          - runner: ubuntu-24.04-arm
-            target: aarch64-unknown-linux-musl
-          - runner: windows-2025
-            target: x86_64-pc-windows-msvc
-          - runner: windows-11-arm
-            target: aarch64-pc-windows-msvc
+        include: ${{ fromJSON(inputs.reuse_run_id && '[{"runner":"macos-15","target":"aarch64-apple-darwin"},{"runner":"macos-15-intel","target":"x86_64-apple-darwin"}]' || '[{"runner":"macos-15","target":"aarch64-apple-darwin"},{"runner":"macos-15-intel","target":"x86_64-apple-darwin"},{"runner":"ubuntu-24.04","target":"x86_64-unknown-linux-musl"},{"runner":"ubuntu-24.04-arm","target":"aarch64-unknown-linux-musl"},{"runner":"windows-2025","target":"x86_64-pc-windows-msvc"},{"runner":"windows-11-arm","target":"aarch64-pc-windows-msvc"}]') }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 180
     defaults:
@@ -55,13 +50,25 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
         with:
           persist-credentials: false
+          ref: ${{ inputs.source_commit || github.sha }}
       - name: Release identity
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REUSE_RUN_ID: ${{ inputs.reuse_run_id }}
+          SOURCE_COMMIT: ${{ inputs.source_commit }}
         run: |
           set -euo pipefail
           version="${INPUT_VERSION:-${GITHUB_REF_NAME#jcodex-v}}"
           [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
           echo "JCODEX_VERSION=$version" >> "$GITHUB_ENV"
-          echo "STABLE_GIT_COMMIT=$GITHUB_SHA" >> "$GITHUB_ENV"
+          source_sha=$(git rev-parse HEAD)
+          if [[ -n "$REUSE_RUN_ID" ]]; then
+            [[ "$REUSE_RUN_ID" =~ ^[0-9]+$ && "$SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ ]]
+            [[ "$source_sha" == "$SOURCE_COMMIT" ]]
+            gh api "repos/$GITHUB_REPOSITORY/actions/runs/$REUSE_RUN_ID" > reused-run.json
+            python3 -c 'import json, os; r=json.load(open("reused-run.json")); assert r["head_sha"] == os.environ["SOURCE_COMMIT"] and r["status"] == "completed" and r["path"] == ".github/workflows/jcodex-release.yml" and r["head_repository"]["full_name"] == os.environ["GITHUB_REPOSITORY"]'
+          fi
+          echo "STABLE_GIT_COMMIT=$source_sha" >> "$GITHUB_ENV"
       - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582
         with:
           targets: ${{ matrix.target }}
@@ -144,10 +151,21 @@ jobs:
     runs-on: ubuntu-24.04
     permissions:
       contents: write
+      actions: read
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
         with:
           persist-credentials: false
+          ref: ${{ inputs.source_commit || github.sha }}
+      - name: Download successful packages from the original run
+        if: inputs.reuse_run_id
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.reuse_run_id }}
+          pattern: jcodex-*
+          path: dist
+          merge-multiple: true
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
         with:
           pattern: jcodex-*
@@ -161,13 +179,32 @@ jobs:
           set -euo pipefail
           version="${INPUT_VERSION:-${GITHUB_REF_NAME#jcodex-v}}"
           [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          export RELEASE_VERSION="$version"
+          python3 - <<'PYTHON'
+          import json, os, tarfile, zipfile
+          from pathlib import Path
+          targets = ["aarch64-apple-darwin", "x86_64-apple-darwin", "aarch64-unknown-linux-musl", "x86_64-unknown-linux-musl", "aarch64-pc-windows-msvc", "x86_64-pc-windows-msvc"]
+          expected = {f"jcodex-{t}." + ("zip" if "windows" in t else "tar.gz") for t in targets}
+          assert {p.name for p in Path("dist").iterdir()} == expected, "Expected exactly six platform archives"
+          for target in targets:
+              suffix = "zip" if "windows" in target else "tar.gz"
+              path = Path("dist") / f"jcodex-{target}.{suffix}"
+              if suffix == "zip":
+                  with zipfile.ZipFile(path) as archive:
+                      manifest = json.loads(archive.read("codex-package.json"))
+              else:
+                  with tarfile.open(path) as archive:
+                      manifest = json.load(archive.extractfile("codex-package.json"))
+              assert manifest["version"] == os.environ["RELEASE_VERSION"] and manifest["target"] == target and manifest["distribution"] == "jcodex", f"Wrong package identity: {path}"
+          PYTHON
+          source_sha=$(git rev-parse HEAD)
           tag="jcodex-v$version"
           if [[ "$GITHUB_EVENT_NAME" == workflow_dispatch ]]; then
             if existing_sha=$(gh api "repos/$GITHUB_REPOSITORY/commits/$tag" --jq .sha 2>/dev/null); then
-              [[ "$existing_sha" == "$GITHUB_SHA" ]] || { echo "Tag already points to another commit: $tag" >&2; exit 1; }
+              [[ "$existing_sha" == "$source_sha" ]] || { echo "Tag already points to another commit: $tag" >&2; exit 1; }
             else
               gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs" \
-                -f ref="refs/tags/$tag" -f sha="$GITHUB_SHA" > /dev/null
+                -f ref="refs/tags/$tag" -f sha="$source_sha" > /dev/null
             fi
           fi
           cp install.sh dist/install.sh
