@@ -111,20 +111,21 @@ use codex_protocol::protocol::AskForApproval;
 use codex_protocol::user_input::UserInput;
 use codex_terminal_detection::TerminalName;
 
-/// Codex CLI
+/// jcodex: Codex with event-driven command monitors
 ///
 /// If no subcommand is specified, options will be forwarded to the interactive CLI.
 #[derive(Debug, Parser)]
 #[clap(
     author,
-    version,
+    version = option_env!("JCODEX_VERSION").unwrap_or(env!("CARGO_PKG_VERSION")),
     // If a sub‑command is given, ignore requirements of the default args.
     subcommand_negates_reqs = true,
     // The executable is sometimes invoked via a platform‑specific name like
     // `codex-x86_64-unknown-linux-musl`, but the help output should always use
     // the generic `codex` command name that users run.
-    bin_name = "codex",
-    override_usage = "codex [OPTIONS] [PROMPT]\n       codex [OPTIONS] <COMMAND> [ARGS]"
+    name = "jcodex",
+    bin_name = "jcodex",
+    override_usage = "jcodex [OPTIONS] [PROMPT]\n       jcodex [OPTIONS] <COMMAND> [ARGS]"
 )]
 struct MultitoolCli {
     #[clap(flatten)]
@@ -959,6 +960,10 @@ fn resolve_windows_update_command_from_path(
 }
 
 fn run_update_command() -> anyhow::Result<()> {
+    if codex_build_info::IS_JCODEX {
+        println!("Update with `brew upgrade julien-blanchon/tap/jcodex` or rerun https://raw.githubusercontent.com/julien-blanchon/jcodex/main/install.sh");
+        return Ok(());
+    }
     #[cfg(debug_assertions)]
     {
         anyhow::bail!(
@@ -1139,6 +1144,14 @@ async fn cli_main(
     // Fold --enable/--disable into config overrides so they flow to all subcommands.
     let toggle_overrides = feature_toggles.to_overrides()?;
     root_config_overrides.raw_overrides.extend(toggle_overrides);
+    // Keep the shared Codex config untouched; this executable always offers monitors.
+    root_config_overrides.raw_overrides.extend([
+        "features.monitor=true".into(),
+        "features.unified_exec=true".into(),
+    ]);
+    if matches!(&subcommand, Some(Subcommand::AppServer(AppServerCommand { subcommand: Some(AppServerSubcommand::Daemon(_)), .. }))) {
+        anyhow::bail!("jcodex does not manage the shared Codex daemon. Use `jcodex app-server` for a dedicated server.");
+    }
     let agents_options = match &subcommand {
         Some(Subcommand::Agents(options)) => Some(options),
         _ => None,
@@ -2984,7 +2997,7 @@ fn merge_interactive_cli_flags(interactive: &mut TuiCli, subcommand_cli: TuiCli)
 
 fn print_completion(cmd: CompletionCommand) {
     let mut app = MultitoolCli::command();
-    let name = "codex";
+    let name = "jcodex";
     generate(cmd.shell, &mut app, name, &mut std::io::stdout());
 }
 

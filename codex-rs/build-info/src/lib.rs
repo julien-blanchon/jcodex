@@ -8,6 +8,9 @@ use semver::Version;
 use serde::Deserialize;
 use serde::Serialize;
 
+/// This distribution uses its own release channel and never invokes the upstream updater.
+pub const IS_JCODEX: bool = true;
+
 static BUILD_INFO: OnceLock<BuildInfo> = OnceLock::new();
 
 /// Initialize build information from the commit stamped into the calling executable.

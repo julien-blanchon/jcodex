@@ -1,0 +1,149 @@
+name: jcodex release
+on:
+  push:
+    tags: ["jcodex-v*.*.*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Package version (build only; push a jcodex-v tag to publish)
+        required: true
+        default: "0.1.0"
+permissions:
+  contents: read
+concurrency:
+  group: jcodex-release-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  build:
+    if: github.repository == 'julien-blanchon/jcodex'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            target: aarch64-apple-darwin
+          - runner: macos-15-intel
+            target: x86_64-apple-darwin
+          - runner: ubuntu-24.04
+            target: x86_64-unknown-linux-musl
+          - runner: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-musl
+          - runner: windows-2025
+            target: x86_64-pc-windows-msvc
+          - runner: windows-11-arm
+            target: aarch64-pc-windows-msvc
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 180
+    defaults:
+      run:
+        shell: bash
+    env:
+      CODEX_REPO_ROOT: ${{ github.workspace }}
+      CARGO_NET_GIT_FETCH_WITH_CLI: "true"
+      CARGO_PROFILE_RELEASE_DEBUG: "0"
+      CARGO_PROFILE_RELEASE_LTO: "false"
+      CARGO_PROFILE_RELEASE_CODEGEN_UNITS: "16"
+      CARGO_BUILD_JOBS: "3"
+      CARGO_INCREMENTAL: "0"
+      TARGET: ${{ matrix.target }}
+      INPUT_VERSION: ${{ inputs.version }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          persist-credentials: false
+      - name: Release identity
+        run: |
+          set -euo pipefail
+          version="${INPUT_VERSION:-${GITHUB_REF_NAME#jcodex-v}}"
+          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          echo "JCODEX_VERSION=$version" >> "$GITHUB_ENV"
+          echo "STABLE_GIT_COMMIT=$GITHUB_SHA" >> "$GITHUB_ENV"
+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582
+        with:
+          targets: ${{ matrix.target }}
+      - uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29
+        if: runner.os == 'Linux'
+        with:
+          version: 0.14.0
+          use-cache: false
+      - name: Linux toolchain
+        if: runner.os == 'Linux'
+        run: |
+          bash .github/scripts/install-musl-build-tools.sh
+          echo "AWS_LC_SYS_NO_JITTER_ENTROPY=1" >> "$GITHUB_ENV"
+      - name: Test installer
+        if: runner.os != 'Windows'
+        run: python3 -m unittest discover -s scripts/jcodex -p 'test_*.py'
+      - uses: ./.github/actions/setup-rusty-v8
+        with:
+          target: ${{ matrix.target }}
+      - name: Build sandbox resource
+        if: runner.os == 'Linux'
+        working-directory: codex-rs
+        run: |
+          set -euo pipefail
+          cargo build --locked --release --target "$TARGET" --bin bwrap
+          strip --strip-debug --strip-unneeded "target/$TARGET/release/bwrap"
+          echo "CODEX_BWRAP_SHA256=$(sha256sum "target/$TARGET/release/bwrap" | cut -d ' ' -f 1)" >> "$GITHUB_ENV"
+      - name: Build runtime
+        working-directory: codex-rs
+        run: |
+          set -euo pipefail
+          args=(--bin codex --bin codex-code-mode-host)
+          if [[ "$TARGET" == *windows* ]]; then
+            export LIBSQLITE3_FLAGS=SQLITE_DISABLE_INTRINSIC
+            args+=(--bin codex-command-runner --bin codex-windows-sandbox-setup)
+          fi
+          cargo build --locked --release --target "$TARGET" "${args[@]}"
+      - name: Assemble complete runtime package
+        run: |
+          set -euo pipefail
+          release="codex-rs/target/$TARGET/release"
+          suffix=""
+          archive_suffix="tar.gz"
+          args=()
+          if [[ "$TARGET" == *windows* ]]; then
+            suffix=".exe"
+            archive_suffix="zip"
+            args+=(--codex-command-runner-bin "$release/codex-command-runner.exe"
+                   --codex-windows-sandbox-setup-bin "$release/codex-windows-sandbox-setup.exe")
+          elif [[ "$TARGET" == *linux* ]]; then
+            args+=(--bwrap-bin "$release/bwrap")
+          fi
+          python3 scripts/build_codex_package.py --target "$TARGET" --package-version "$JCODEX_VERSION" \
+            --package-dir package --entrypoint-bin "$release/codex$suffix" \
+            --code-mode-host-bin "$release/codex-code-mode-host$suffix" "${args[@]}"
+          mkdir dist
+          python3 scripts/jcodex/package.py package "dist/jcodex-$TARGET.$archive_suffix"
+          package/bin/jcodex$suffix --version
+          package/bin/jcodex$suffix --disable monitor features list > features.txt
+          python3 -c 'from pathlib import Path; assert any(line.split()[0] == "monitor" and line.split()[-1] == "true" for line in Path("features.txt").read_text().splitlines() if line.strip())'
+      - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
+        with:
+          name: jcodex-${{ matrix.target }}
+          path: dist/*
+          if-no-files-found: error
+  publish:
+    if: startsWith(github.ref, 'refs/tags/jcodex-v')
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          pattern: jcodex-*
+          path: dist
+          merge-multiple: true
+      - name: Checksums and release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          cp install.sh dist/install.sh
+          (cd dist && sha256sum jcodex-* > SHA256SUMS)
+          gh release create "$GITHUB_REF_NAME" dist/* --verify-tag \
+            --title "jcodex ${GITHUB_REF_NAME#jcodex-v}" --notes-file scripts/jcodex/release-notes.md

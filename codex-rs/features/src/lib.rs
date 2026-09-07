@@ -488,7 +488,9 @@ impl Features {
     }
 
     pub fn enabled(&self, f: Feature) -> bool {
-        self.enabled.contains(&f)
+        // Release builds must not inherit a disabled monitor flag from shared Codex config.
+        (f == Feature::Monitor && option_env!("JCODEX_VERSION").is_some())
+            || self.enabled.contains(&f)
     }
 
     pub fn apps_enabled_for_auth(&self, has_chatgpt_auth: bool) -> bool {
@@ -928,7 +930,7 @@ pub const FEATURES: &[FeatureSpec] = &[
     FeatureSpec {
         id: Feature::Monitor,
         key: "monitor",
-        stage: Stage::UnderDevelopment,
+        stage: Stage::Stable,
         default_enabled: false,
     },
     FeatureSpec {
