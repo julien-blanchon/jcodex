@@ -150,7 +150,7 @@ impl UnifiedExecProcessManager {
         let (receiver, tail) = if let Some(process) = &process {
             let mut buffer = process.output_handles().output_buffer.lock().await;
             let receiver = process.output_receiver();
-            let tail = std::mem::take(&mut *buffer);
+            let tail = std::mem::take(&mut buffer.pending);
             (Some(receiver), tail.to_bytes_with_omission_marker())
         } else {
             (None, Vec::new())

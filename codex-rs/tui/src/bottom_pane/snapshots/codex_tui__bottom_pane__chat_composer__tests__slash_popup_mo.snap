@@ -6,6 +6,4 @@ expression: terminal.backend()
 "                                                            "
 "› /mo                                                       "
 "                                                            "
-"  /model    choose what model and reasoning effort to use   "
-"  /monitor  list command monitors and select one to stop    "
 "                                         100% context left  "
