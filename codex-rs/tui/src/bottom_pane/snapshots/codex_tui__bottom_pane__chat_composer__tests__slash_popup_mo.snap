@@ -2,8 +2,8 @@
 source: tui/src/bottom_pane/chat_composer.rs
 expression: terminal.backend()
 ---
+"› /model  choose what model and reasoning effort to use     "
 "                                                            "
 "› /mo                                                       "
 "                                                            "
-"  /model    choose what model and reasoning effort to use   "
-"  /monitor  list command monitors and select one to stop    "
+"                                         100% context left  "
